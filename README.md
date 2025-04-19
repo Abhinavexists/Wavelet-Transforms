@@ -38,7 +38,7 @@ Denoising Sample
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/wavelet-transforms.git
+git clone https://github.com/Abhinavexists/Wavelet-Transforms.git
 cd wavelet-transforms
 ```
 
@@ -95,11 +95,11 @@ wavelet-transforms/
 ├── app.py              # Flask application
 ├── transform.py        # Wavelet transform implementation
 ├── static/
-│   ├── css/           # Stylesheets
-│   └── js/            # JavaScript files
-├── templates/         # HTML templates
-├── uploads/          # Temporary image storage
-└── output/           # Processed images
+│   ├── css/            # Stylesheets
+│   └── js/             # JavaScript files
+├── templates/          # HTML templates
+├── uploads/            # Temporary image storage
+└── output/             # Processed images
 ```
 
 ## Dependencies
