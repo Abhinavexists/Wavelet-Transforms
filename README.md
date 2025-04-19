@@ -31,6 +31,8 @@ For color images, processing in YCbCr color space often yields better results th
 
 ### Example Denoising Results
 
+![Results](Results.png)
+
 Denoising Sample
 ![Comparision](output/comparison_1.png)
 
