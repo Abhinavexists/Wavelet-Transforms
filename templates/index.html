@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wavelet Image Denoising</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <div class="main-container">
+        <h1 class="text-center mb-4">Wavelet Image Denoising</h1>
+        
+        <div class="row">
+            <div class="col-md-8">
+                <div class="image-container" id="dropZone">
+                    <div class="upload-text">
+                        <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                        <p>Drag and drop an image here or click to select</p>
+                        <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                    </div>
+                </div>
+                
+                <div class="result-container">
+                    <h4 class="mb-3">Result</h4>
+                    <div class="image-container">
+                        <img id="resultImage" src="" alt="Denoised image">
+                    </div>
+                    <div class="result-actions">
+                        <a href="#" class="btn-download" id="downloadBtn">
+                            <i class="fas fa-download"></i>
+                            Download Result
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="loading">
+                    <div class="spinner-border loading-spinner text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Processing image...</p>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="controls">
+                    <h4 class="mb-3">Parameters</h4>
+                    <form id="denoisingForm">
+                        <div class="mb-3">
+                            <label class="form-label">Wavelet Type</label>
+                            <select class="form-select" name="wavelet">
+                                <option value="bior4.4">Biorthogonal 4.4</option>
+                                <option value="haar">Haar</option>
+                                <option value="db4">Daubechies 4</option>
+                                <option value="sym4">Symlets 4</option>
+                                <option value="coif3">Coiflets 3</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Thresholding Method</label>
+                            <select class="form-select" name="method">
+                                <option value="BayesShrink">BayesShrink</option>
+                                <option value="VisuShrink">VisuShrink</option>
+                                <option value="SureShrink">SureShrink</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Decomposition Level</label>
+                            <input type="number" class="form-control" name="level" min="1" max="4" value="2">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Color Space</label>
+                            <select class="form-select" name="color_space">
+                                <option value="RGB">RGB</option>
+                                <option value="YCbCr">YCbCr</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="add_noise" id="addNoise">
+                                <label class="form-check-label" for="addNoise">
+                                    Add Noise
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3" id="noiseLevelContainer" style="display: none;">
+                            <label class="form-label">Noise Level</label>
+                            <input type="range" class="form-range" name="noise_level" min="0" max="0.1" step="0.01" value="0.02">
+                            <div class="text-end"><span id="noiseLevelValue">0.02</span></div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary w-100" id="processButton" disabled>
+                            Process Image
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
