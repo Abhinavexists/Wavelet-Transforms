@@ -3,14 +3,13 @@ import matplotlib.pyplot as plt
 import pywt
 import cv2
 import os
+import requests
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 from skimage.util import random_noise
 import requests
 from io import BytesIO
 from PIL import Image
 from functools import lru_cache
-import argparse
-from concurrent.futures import ProcessPoolExecutor
 
 class WaveletDenoiser:
     def __init__(self, wavelet='bior4.4', level=None):
@@ -30,6 +29,8 @@ class WaveletDenoiser:
     
     def _pad_to_dyadic(self, img):
         """Pad image to have dimensions divisible by 2^level"""
+        if self.level is None:
+            raise ValueError("self.level must be set to an integer before padding. (Got None)")
         pad_x = int(np.ceil(img.shape[0] / (2**self.level))) * (2**self.level) - img.shape[0]
         pad_y = int(np.ceil(img.shape[1] / (2**self.level))) * (2**self.level) - img.shape[1]
         
@@ -82,17 +83,10 @@ class WaveletDenoiser:
         return threshold
 
     @lru_cache(maxsize=32)
-    def _wavelet_decompose(self, channel_tuple, wavelet, level):
+    def _wavelet_decompose(self, channel_tuple, shape, wavelet, level):
         """Cached wavelet decomposition"""
         # Convert tuple back to array and reshape to original dimensions
-        channel = np.array(channel_tuple)
-        # Get the shape from the first element of the tuple
-        shape = channel.shape
-        # Reshape to 2D if needed
-        if len(shape) == 1:
-            # Calculate the dimensions that would make a square image
-            side = int(np.sqrt(shape[0]))
-            channel = channel.reshape(side, side)
+        channel = np.array(channel_tuple).reshape(shape)
         return pywt.wavedec2(channel, wavelet, level=level)
 
     def _enhance_edges(self, original, denoised, strength=0.3):
@@ -173,7 +167,8 @@ class WaveletDenoiser:
         """Apply wavelet denoising to a single channel"""
         # Apply wavelet decomposition with caching
         channel_tuple = tuple(channel.flatten())
-        coeffs = self._wavelet_decompose(channel_tuple, self.wavelet, self.level)
+        shape = channel.shape
+        coeffs = self._wavelet_decompose(channel_tuple, shape, self.wavelet, self.level)
         
         # Adjust threshold multiplier for chroma channels
         threshold_multiplier = 2.0 if chroma else 1.0
@@ -219,6 +214,9 @@ class WaveletDenoiser:
                     threshold = self._sure_shrink(coeffs[i][j]) * threshold_multiplier
                     detail_coeffs.append(pywt.threshold(coeffs[i][j], threshold, mode='soft'))
                 new_coeffs[i] = tuple(detail_coeffs)
+        else:
+            # Default: no thresholding, just copy coefficients
+            new_coeffs = list(coeffs)
         
         # Reconstruct image
         denoised_channel = pywt.waverec2(new_coeffs, self.wavelet)
@@ -243,44 +241,46 @@ class WaveletDenoiser:
             original = original[:min_shape[0], :min_shape[1], ...] if original.ndim >= 2 else original[:min_shape[0]]
             noisy = noisy[:min_shape[0], :min_shape[1], ...] if noisy.ndim >= 2 else noisy[:min_shape[0]]
             denoised = denoised[:min_shape[0], :min_shape[1], ...] if denoised.ndim >= 2 else denoised[:min_shape[0]]
-        
+
         # Calculate PSNR
         psnr_noisy = peak_signal_noise_ratio(original, noisy)
         psnr_denoised = peak_signal_noise_ratio(original, denoised)
-        
+
         # Calculate SSIM with appropriate parameters
-        # Use a smaller window size if image is small
         min_dim = min(original.shape[0], original.shape[1])
-        win_size = min(7, min_dim - (1 if min_dim % 2 == 0 else 0))  # Ensure it's odd and smaller than image
+        # Ensure win_size is odd and <= min_dim
+        win_size = min(7, min_dim)
+        if win_size % 2 == 0:
+            win_size -= 1
         if win_size < 3:
-            win_size = 3  # Minimum window size
-            
-        # Handle multichannel correctly
+            win_size = 3
+
+        # Handle multichannel correctly (use channel_axis for new skimage)
         if original.ndim == 3:
             ssim_noisy = structural_similarity(
-                original, noisy, 
+                original, noisy,
                 win_size=win_size,
-                data_range=1.0, 
-                channel_axis=2  # Specify channel axis explicitly
+                data_range=1.0,
+                channel_axis=2
             )
             ssim_denoised = structural_similarity(
-                original, denoised, 
+                original, denoised,
                 win_size=win_size,
-                data_range=1.0, 
-                channel_axis=2  # Specify channel axis explicitly
+                data_range=1.0,
+                channel_axis=2
             )
         else:
             ssim_noisy = structural_similarity(
-                original, noisy, 
+                original, noisy,
                 win_size=win_size,
                 data_range=1.0
             )
             ssim_denoised = structural_similarity(
-                original, denoised, 
+                original, denoised,
                 win_size=win_size,
                 data_range=1.0
             )
-        
+
         return {
             'psnr_noisy': psnr_noisy,
             'psnr_denoised': psnr_denoised,
@@ -369,35 +369,37 @@ def create_test_image(size=(512, 512, 3)):
 
 # Helper function to download or generate Kodak dataset images
 def get_kodak_image(image_number):
-    """Download an image from the Kodak dataset or create a test image"""
-    # Try different sources for Kodak dataset
-    sources = [
-        f"http://r0k.us/graphics/kodak/kodim/kodim{image_number:02d}.png",
-        f"https://raw.githubusercontent.com/kodak/test-images/master/kodim{image_number:02d}.png"
-    ]
-    
-    # First try to load locally if available
-    local_path = os.path.join('kodak_dataset', f'kodim{image_number:02d}.png')
+    """Download an image from the Kodak dataset or return a test image"""
+    url = f"https://r0k.us/graphics/kodak/kodak/kodim{image_number:02d}.png"
+    local_dir = "kodak_dataset"
+    os.makedirs(local_dir, exist_ok=True)
+    local_path = os.path.join(local_dir, f"kodim{image_number:02d}.png")
+
+    # Check if image exists locally
     if os.path.exists(local_path):
         try:
-            img = Image.open(local_path)
+            img = Image.open(local_path).convert("RGB")
             return np.array(img) / 255.0
-        except:
-            pass
-    
-    # Then try to download
-    for url in sources:
-        try:
-            response = requests.get(url)
-            if response.status_code == 200:
-                img = Image.open(BytesIO(response.content))
-                return np.array(img) / 255.0
-        except:
-            continue
-    
-    print(f"Failed to download image {image_number}. Using a test image instead.")
-    # Create a test image with patterns
-    return create_test_image(size=(512, 512, 3))
+        except Exception as e:
+            print(f"Failed to open local image: {e}")
+
+    # Try downloading the image
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            with open(local_path, "wb") as f:
+                f.write(response.content)
+            img = Image.open(BytesIO(response.content)).convert("RGB")
+            return np.array(img) / 255.0
+        else:
+            print(f"Failed to download image: HTTP {response.status_code}")
+    except Exception as e:
+        print(f"Error downloading image: {e}")
+
+    # Fallback to test image
+    print(f"Using fallback test image for kodim{image_number:02d}")
+    return create_test_image()
 
 # Main function to run the demo
 def main():
